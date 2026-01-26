@@ -124,6 +124,7 @@
             position: absolute;
             top: 80px;
             right: 650px;
+            /* Moved significantly left to avoid overlapping with 2nd column of graphs */
             display: grid;
             grid-template-columns: repeat(8, 14px);
             gap: 2px;
@@ -286,7 +287,7 @@
     <canvas id="c"></canvas>
 
     <div id="ui-layer">
-        <div id="hud">ARCHIVE 2026.lavanda.audit.Ibonarium Cosmo Dynamics Lab LIVE — Center for Space & Planetary Monitoring </div>
+        <div id="hud">ARCHIVE 2026.lavanda.audit.</div>
         <div id="hud-sub">lavanda audit · ibonarium · project 2026</div>
         <div id="status">ініціалізація...</div>
 
@@ -572,32 +573,45 @@
             }
 
             // --- 5. ENERGY ---
-            html += '<div class="category">ЕНЕРГІЯ </div>';
+            html += '<div class="category">ЕНЕРГІЯ (YAHOO)</div>';
             const commodities = [
-                { symbol: 'CL=F', name: 'WTI Oil' }, { symbol: 'BZ=F', name: 'Brent Oil' }, { symbol: 'NG=F', name: 'Nat. Gas' }, { symbol: 'GC=F', name: 'Gold' }, { symbol: 'SI=F', name: 'Silver' }, { symbol: 'HG=F', name: 'Copper' }
+                { symbol: 'CL=F', name: 'WTI Oil', thresholds: { watch: 75, warn: 85, danger: 95 } },
+                { symbol: 'BZ=F', name: 'Brent Oil', thresholds: { watch: 80, warn: 90, danger: 100 } },
+                { symbol: 'NG=F', name: 'Nat. Gas', thresholds: { watch: 3, warn: 4, danger: 5 } },
+                { symbol: 'GC=F', name: 'Gold', thresholds: { watch: 2100, warn: 2200, danger: 2300 } },
+                { symbol: 'SI=F', name: 'Silver', thresholds: { watch: 26, warn: 29, danger: 32 } },
+                { symbol: 'HG=F', name: 'Copper', thresholds: { watch: 4.2, warn: 4.6, danger: 5.0 } }
             ];
             for (const c of commodities) {
                 const dat = await fetchWithProxy(`https://query1.finance.yahoo.com/v8/finance/chart/${c.symbol}?range=1d&interval=1d`);
+                let val = 0;
+
                 if (dat?.chart?.result?.[0]?.meta?.regularMarketPrice) {
-                    const val = dat.chart.result[0].meta.regularMarketPrice;
+                    val = dat.chart.result[0].meta.regularMarketPrice;
+                }
+
+                if (val > 0) {
                     if (c.symbol === 'CL=F') updateHistory(oilHistory, val);
-                    html += `<div class="row"><span class="label">${c.name} </span><span class="val">${val.toFixed(2)} $</span></div>`;
-                    heatmapValues.push({ value: val, color: '#0f0' });
+                    html += `<div class="row"><span class="label">${c.name} </span><span class="val ${getColorClass(val, c.thresholds)}">${val.toFixed(2)} $</span></div>`;
+                    heatmapValues.push({ value: val, color: getColor(val, c.thresholds) });
                     loaded++;
                 }
             }
 
             // --- 6. AGRO ---
-            html += '<div class="category">AGRO </div>';
+            html += '<div class="category">АГРО (YAHOO)</div>';
             const agro = [
-                { symbol: 'ZC=F', name: 'Corn' }, { symbol: 'ZW=F', name: 'Wheat' }, { symbol: 'ZS=F', name: 'Soybean' }, { symbol: 'KC=F', name: 'Coffee' }
+                { symbol: 'ZC=F', name: 'Corn', thresholds: { watch: 450, warn: 500, danger: 600 } },
+                { symbol: 'ZW=F', name: 'Wheat', thresholds: { watch: 600, warn: 700, danger: 800 } },
+                { symbol: 'ZS=F', name: 'Soybean', thresholds: { watch: 1200, warn: 1300, danger: 1400 } },
+                { symbol: 'KC=F', name: 'Coffee', thresholds: { watch: 180, warn: 220, danger: 250 } }
             ];
             for (const c of agro) {
                 const dat = await fetchWithProxy(`https://query1.finance.yahoo.com/v8/finance/chart/${c.symbol}?range=1d&interval=1d`);
                 if (dat?.chart?.result?.[0]?.meta?.regularMarketPrice) {
                     const val = dat.chart.result[0].meta.regularMarketPrice;
-                    html += `<div class="row"><span class="label">${c.name} </span><span class="val">${val.toFixed(2)}</span></div>`;
-                    heatmapValues.push({ value: val, color: '#ffd700' });
+                    html += `<div class="row"><span class="label">${c.name} </span><span class="val ${getColorClass(val, c.thresholds)}">${val.toFixed(2)}</span></div>`;
+                    heatmapValues.push({ value: val, color: getColor(val, c.thresholds) });
                     loaded++;
                 }
             }
@@ -618,12 +632,21 @@
             // --- 8. FINANCE & CRYPTO ---
             html += '<div class="category">CRYPTO & MARKET</div>';
             const cryptoIds = 'bitcoin,ethereum,solana,ripple,cardano';
-            const crypto = await fetchWithProxy(`https://api.coingecko.com/api/v3/simple/price?ids=${cryptoIds}&vs_currencies=usd`);
+            const crypto = await fetchWithProxy(`https://api.coingecko.com/api/v3/simple/price?ids=${cryptoIds}&vs_currencies=usd&include_24hr_change=true`);
             if (crypto) {
                 for (let k in crypto) {
-                    if (k === 'bitcoin') updateHistory(btcHistory, crypto[k].usd);
-                    html += `<div class="row"><span class="label">${k.toUpperCase()} </span><span class="val">${crypto[k].usd} $</span></div>`;
-                    heatmapValues.push({ value: 1, color: '#0f0' });
+                    const price = crypto[k].usd;
+                    const change = crypto[k].usd_24h_change || 0;
+                    if (k === 'bitcoin') updateHistory(btcHistory, price);
+
+                    // Alert logic: High volatility (up or down > 5%) is yellow, > 10% red
+                    let color = '#0f0';
+                    let cls = 'val-safe';
+                    if (Math.abs(change) > 10) { color = '#f00'; cls = 'val-danger'; }
+                    else if (Math.abs(change) > 5) { color = '#ff8c00'; cls = 'val-warn'; }
+
+                    html += `<div class="row"><span class="label">${k.toUpperCase()} </span><span class="val ${cls}">${price} $ <span style="font-size:9px">(${change > 0 ? '+' : ''}${change.toFixed(1)}%)</span></span></div>`;
+                    heatmapValues.push({ value: price, color: color });
                 }
             }
 
@@ -922,45 +945,28 @@
         let t = 0;
         function loop() {
             t += 0.016;
-            ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            const chaos = realData.chaos, cx = canvas.width / 2, cy = canvas.height / 2;
+            ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const chaos = realData.chaos, cx = canvas.width / 2 + (canvas.width > 900 ? 50 : 0), cy = canvas.height / 2;
 
-            // STARS
             stars.forEach(s => {
                 const tw = Math.sin(t * s.twinkle * 12 + s.x * 0.008) * 0.18 * (1 - chaos * 0.3);
                 ctx.fillStyle = `rgba(220,235,255,${Math.max(0.08, s.baseAlpha + tw).toFixed(3)})`;
                 ctx.fillRect(s.x, s.y, s.size, s.size);
             });
 
-            // RADAR SWIPE EFFECT
-            ctx.save();
-            const radarCx = cx + (canvas.width > 900 ? 50 : 0);
-            ctx.translate(radarCx, cy);
-            ctx.rotate(t * 1.5);
-            const radarGrad = ctx.createConicGradient(0, 0, 0);
-            radarGrad.addColorStop(0, 'rgba(0, 255, 255, 0.15)');
-            radarGrad.addColorStop(0.1, 'rgba(0, 255, 255, 0)');
-            radarGrad.addColorStop(1, 'rgba(0, 255, 255, 0)');
-            ctx.fillStyle = radarGrad;
-            ctx.beginPath(); ctx.arc(0, 0, Math.min(canvas.width, canvas.height) * 0.3, 0, 6.28); ctx.fill();
-            ctx.restore();
+            // LAYERED GEOMETRY
+            drawSystemTopology();
 
-            // FORMULAS
             formulaObjs.forEach(f => {
                 f.alpha = Math.sin(t * 0.5 + f.phase) * 0.5 + 0.5;
                 ctx.fillStyle = `rgba(180,255,200,${f.alpha * 0.25})`;
-                ctx.font = '16px Courier New'; ctx.fillText(f.text, f.x + Math.sin(t + f.phase) * 20, f.y + Math.cos(t + f.phase) * 15);
+                ctx.font = '16px Courier New'; ctx.fillText(f.text, f.x + Math.sin(t) * 10, f.y + Math.cos(t) * 10);
             });
 
-            drawCombinedGrid();
-            drawSolarGrid();
-            drawEarthEnvGrid();
-            drawSystemTopology();
-            drawStressGrids();
+            drawCombinedGrid(); drawSolarGrid(); drawEarthEnvGrid(); drawStressGrids();
 
             if (canvas.width > 1200) {
-                const w = 180, h = 80;
-                const mx = canvas.width - 420;
+                const w = 180, h = 80, mx = canvas.width - 420;
                 drawGraphHelper('SOLAR KP-INDEX', kpHistory, mx, 80, w, h, 'rgba(255, 200, 0, 0.8)', 9, '');
                 const maxBtc = btcHistory.length ? Math.max(...btcHistory) * 1.05 : 100000;
                 drawGraphHelper('BTC/USD VALUE', btcHistory, mx, 190, w, h, 'rgba(0, 255, 100, 0.8)', maxBtc, '$');
@@ -968,7 +974,6 @@
                 drawGraphHelper('SOLAR WIND VEL', solarWindHistory, mx, 410, w, h, 'rgba(255, 100, 255, 0.8)', 1000, 'km/s');
                 drawGraphHelper('LOCAL WIND SPEED', windHistory, mx, 520, w, h, 'rgba(0, 200, 255, 0.8)', 50, 'km/h');
             }
-
 
             requestAnimationFrame(loop);
         }
