@@ -528,23 +528,25 @@
             }
 
             const kpData = await fetchWithProxy('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
-            if (kpData?.length) {
-                const lastKp = parseFloat(kpData[kpData.length - 1][1]) || 0;
+            if (kpData && kpData.length > 0) {
+                const lastKp = parseFloat(kpData[kpData.length - 1].Kp) || 0;
                 solarIndices.kp = lastKp;
                 updateHistory(kpHistory, lastKp);
 
                 html += `<div class="row"><span class="label">Kp-index </span><span class="val ${getColorClass(lastKp, { watch: 5, warn: 6, danger: 7 })}">${lastKp}</span></div>`;
                 heatmapValues.push({ value: lastKp, color: getColor(lastKp, { watch: 5, warn: 6, danger: 7 }) });
                 for (let i = 2; i <= 4; i++) {
-                    let val = parseFloat(kpData[kpData.length - i][1]) || 0;
-                    html += `<div class="row"><span class="label">Kp T-${i - 1} </span><span class="val ${getColorClass(val, { watch: 5, warn: 6, danger: 7 })}">${val}</span></div>`;
-                    heatmapValues.push({ value: val, color: getColor(val, { watch: 5, warn: 6, danger: 7 }) });
+                    if (kpData.length >= i) {
+                        let val = parseFloat(kpData[kpData.length - i].Kp) || 0;
+                        html += `<div class="row"><span class="label">Kp T-${i - 1} </span><span class="val ${getColorClass(val, { watch: 5, warn: 6, danger: 7 })}">${val}</span></div>`;
+                        heatmapValues.push({ value: val, color: getColor(val, { watch: 5, warn: 6, danger: 7 }) });
+                    }
                 }
             }
 
             const dst = await fetchWithProxy('https://services.swpc.noaa.gov/products/kyoto-dst.json');
-            if (dst?.length > 0) {
-                const lastDst = parseFloat(dst[dst.length - 1][1]) || 0;
+            if (dst && dst.length > 0) {
+                const lastDst = parseFloat(dst[dst.length - 1].dst) || 0;
                 solarIndices.dst = lastDst;
                 html += `<div class="row"><span class="label">Dst Index </span><span class="val ${getColorClass(-lastDst, { watch: 50, warn: 100, danger: 200 })}">${lastDst} nT</span></div>`;
                 heatmapValues.push({ value: lastDst, color: getColor(-lastDst, { watch: 50, warn: 100, danger: 200 }) });
